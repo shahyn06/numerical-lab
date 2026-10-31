@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://numerical-lab.sparsemyrrh.chatgpt.site/sitemap.xml
