@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Numerical Lab</string>
+    <string name="saved">تم حفظ ملف CSV</string>
+    <string name="save_error">تعذر حفظ الملف. جرّب اختيار مكان آخر.</string>
+    <string name="no_browser">لا يوجد متصفح لفتح هذا الرابط.</string>
+    <string name="load_error">تعذر فتح المعمل. حدّث Android System WebView ثم حاول مجددًا.</string>
+    <string name="retry">حاول مجددًا</string>
+</resources>

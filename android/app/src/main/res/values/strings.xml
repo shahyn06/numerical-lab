@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Numerical Lab</string>
+    <string name="saved">CSV saved</string>
+    <string name="save_error">Could not save the CSV. Try a different location.</string>
+    <string name="no_browser">No browser is available to open this link.</string>
+    <string name="load_error">The lab could not load. Update Android System WebView, then try again.</string>
+    <string name="retry">Try again</string>
+</resources>

@@ -1,0 +1,44 @@
+plugins { id 'com.android.application' }
+
+def generatedAssets = layout.buildDirectory.dir('generated/webAssets')
+def csvBridge = "if(window.AndroidDownloads){window.AndroidDownloads.saveCsv('\\ufeff'+csv,a.download);}else{a.click();}"
+tasks.register('prepareWebAssets', Sync) {
+    from(rootProject.file('../docs'))
+    into(generatedAssets)
+    filteringCharset = 'UTF-8'
+    filesMatching(['app.js', 'interpolation-ui.js']) {
+        filter { String line -> line.replace('a.click();', csvBridge) }
+    }
+    doFirst {
+        ['app.js', 'interpolation-ui.js'].each { name ->
+            def source = rootProject.file('../docs/' + name).getText('UTF-8')
+            if (source.count('a.click();') != 1) {
+                throw new GradleException('CSV integration needs review for ' + name)
+            }
+        }
+    }
+}
+
+android {
+    namespace 'com.saeedshahyn.numericallab'
+    compileSdk 36
+    defaultConfig {
+        applicationId 'com.saeedshahyn.numericallab'
+        minSdk 26
+        targetSdk 36
+        versionCode 1
+        versionName '1.0-preview'
+    }
+    sourceSets.main.assets.srcDir(generatedAssets)
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    buildTypes {
+        release { minifyEnabled false }
+    }
+}
+tasks.named('preBuild').configure { dependsOn('prepareWebAssets') }
+dependencies {
+    implementation 'androidx.webkit:webkit:1.15.0'
+}

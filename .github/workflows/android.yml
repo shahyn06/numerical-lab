@@ -1,0 +1,53 @@
+name: Android app
+
+on:
+  push:
+    branches: [main]
+    paths: ['android/**', 'docs/**', '.github/workflows/android.yml']
+  pull_request:
+    branches: [main]
+    paths: ['android/**', 'docs/**', '.github/workflows/android.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Validate the numerical engine
+        run: node --test tests/*.test.mjs
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          gradle-version: '8.13'
+          cache-disabled: true
+      - name: Build and check the Android app
+        run: gradle -p android --no-daemon :app:assembleDebug :app:lintDebug
+      - name: Prepare the APK
+        run: |
+          mkdir -p android/dist
+          cp android/app/build/outputs/apk/debug/app-debug.apk android/dist/NumericalLab-1.0-preview.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose android/dist/NumericalLab-1.0-preview.apk
+          cd android/dist
+          sha256sum NumericalLab-1.0-preview.apk > SHA256SUMS.txt
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: NumericalLab-Android-1.0-preview
+          path: android/dist/
+          if-no-files-found: error
+          retention-days: 30
+
