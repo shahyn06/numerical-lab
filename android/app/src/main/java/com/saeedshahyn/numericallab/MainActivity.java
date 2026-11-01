@@ -1,7 +1,6 @@
 package com.saeedshahyn.numericallab;
 
 import android.annotation.SuppressLint;
-import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.res.Configuration;
@@ -27,7 +26,8 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
-import android.window.OnBackInvokedDispatcher;
+import androidx.activity.ComponentActivity;
+import androidx.activity.OnBackPressedCallback;
 import androidx.webkit.WebViewAssetLoader;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -36,7 +36,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 
 /** Hosts only bundled lab assets; external links open in the user's browser. */
-public final class MainActivity extends Activity {
+public final class MainActivity extends ComponentActivity {
     private static final String HOME = "https://appassets.androidplatform.net/assets/index.html";
     private static final int SAVE_CSV = 401;
     private FrameLayout root;
@@ -116,10 +116,9 @@ public final class MainActivity extends Activity {
         });
         webView.loadUrl(HOME);
         root.requestApplyInsets();
-        if (Build.VERSION.SDK_INT >= 33) {
-            getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
-                OnBackInvokedDispatcher.PRIORITY_DEFAULT, this::handleBack);
-        }
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override public void handleOnBackPressed() { handleBack(); }
+        });
     }
 
     private static boolean isBundled(Uri uri) {
@@ -137,9 +136,6 @@ public final class MainActivity extends Activity {
                 if (webView != null && webView.canGoBack()) webView.goBack(); else finish();
             });
     }
-
-    @SuppressWarnings("deprecation")
-    @Override public void onBackPressed() { handleBack(); }
 
     private void showLoadError() {
         runOnUiThread(() -> {

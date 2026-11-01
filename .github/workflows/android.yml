@@ -36,7 +36,12 @@ jobs:
           gradle-version: '8.13'
           cache-disabled: true
       - name: Build and check the Android app
-        run: gradle -p android --no-daemon :app:assembleDebug :app:lintDebug
+        run: |
+          if ! gradle -p android --no-daemon :app:assembleDebug :app:lintDebug; then
+            report=android/app/build/intermediates/lint_intermediate_text_report/debug/lintReportDebug/lint-results-debug.txt
+            if [ -f "$report" ]; then cat "$report"; fi
+            exit 1
+          fi
       - name: Prepare the APK
         run: |
           mkdir -p android/dist

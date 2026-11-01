@@ -40,5 +40,6 @@ android {
 }
 tasks.named('preBuild').configure { dependsOn('prepareWebAssets') }
 dependencies {
+    implementation 'androidx.activity:activity:1.11.0'
     implementation 'androidx.webkit:webkit:1.15.0'
 }
