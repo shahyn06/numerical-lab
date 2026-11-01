@@ -21,6 +21,7 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
+import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
@@ -28,7 +29,6 @@ import android.widget.TextView;
 import android.widget.Toast;
 import android.window.OnBackInvokedDispatcher;
 import androidx.webkit.WebViewAssetLoader;
-import androidx.webkit.WebViewClientCompat;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -82,7 +82,7 @@ public final class MainActivity extends Activity {
 
         WebViewAssetLoader assets = new WebViewAssetLoader.Builder()
             .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this)).build();
-        webView.setWebViewClient(new WebViewClientCompat() {
+        webView.setWebViewClient(new WebViewClient() {
             @Override public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
                 if (isBundled(request.getUrl())) {
                     WebResourceResponse response = assets.shouldInterceptRequest(request.getUrl());
