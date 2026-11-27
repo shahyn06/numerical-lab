@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {parse,evaluate} from '../docs/engine.js';
-import {forwardDifference,backwardDifference,centralDifference,differentiate,errorSeries} from '../docs/differentiation.js';
+import {forwardDifference,backwardDifference,centralDifference,differentiate,errorSeries,tableDifferences,validateTablePoints,DIFFERENCE_METHODS} from '../docs/differentiation.js';
 const close=(a,b,e=1e-10)=>assert.ok(Math.abs(a-b)<=e,`${a} ≠ ${b}`);
 const fromExpression=source=>{const ast=parse(source);return x=>evaluate(ast,x);};
 
@@ -87,4 +87,49 @@ test('error series is log-spaced, finite where defined, and shrinks before round
   assert.ok(mid.central<mid.forward);assert.ok(mid.central<s.points[0].central);
   const noExact=errorSeries({expression:'ln(x)',a:-1});
   assert.equal(noExact.exact,null);assert.deepEqual(noExact.points,[]);
+});
+
+test('table differences reproduce the lecture table at a = 1.5',()=>{
+  const table=[{x:1,y:1.002},{x:1.5,y:1.0004},{x:2,y:1.0005},{x:2.5,y:1.00006}];
+  const r=tableDifferences(table,1);
+  assert.equal(r.a,1.5);close(r.fa,1.0004);
+  close(r.methods.forward.value,(1.0005-1.0004)/0.5);close(r.methods.forward.value,0.0002);
+  close(r.methods.backward.value,(1.0004-1.002)/0.5);close(r.methods.backward.value,-0.0032);
+  close(r.methods.central.value,(1.0005-1.002)/1.0);close(r.methods.central.value,-0.0015);
+  close(r.methods.forward.h,0.5);close(r.methods.backward.h,0.5);
+  close(r.methods.central.span,1.0);close(r.methods.central.h,0.5);
+  assert.equal(r.exact,null);assert.equal(typeof r.exactError,'string');
+});
+
+test('table differences report unavailable methods at the table edges, never NaN',()=>{
+  const table=[{x:1,y:1.002},{x:1.5,y:1.0004},{x:2,y:1.0005},{x:2.5,y:1.00006}];
+  const first=tableDifferences(table,0);
+  assert.equal(typeof first.methods.backward.error,'string');
+  assert.equal(typeof first.methods.central.error,'string');
+  close(first.methods.forward.value,(1.0004-1.002)/0.5);
+  const last=tableDifferences(table,3);
+  assert.equal(typeof last.methods.forward.error,'string');
+  assert.equal(typeof last.methods.central.error,'string');
+  close(last.methods.backward.value,(1.00006-1.0005)/0.5);
+  for(const r of [first,last])for(const m of DIFFERENCE_METHODS)
+    assert.ok(!('value' in r.methods[m])||Number.isFinite(r.methods[m].value));
+});
+
+test('table validation sorts rows and rejects duplicate x values',()=>{
+  const r=tableDifferences([{x:2,y:1.0005},{x:1,y:1.002},{x:1.5,y:1.0004}],1);
+  assert.deepEqual(r.points.map(p=>p.x),[1,1.5,2]);
+  assert.equal(r.a,1.5);
+  assert.throws(()=>tableDifferences([{x:1,y:1},{x:1.5,y:2},{x:1.5,y:3}],0),/must be different/);
+  assert.throws(()=>validateTablePoints([{x:1,y:1}]),/at least 2/);
+  assert.throws(()=>tableDifferences([{x:1,y:1},{x:2,y:''},{x:3,y:3}],0),/finite number/);
+  assert.throws(()=>tableDifferences([{x:1,y:1},{x:2,y:2},{x:3,y:3}],3),/one of the table points/);
+});
+
+test('table differences use the actual distances when spacing is unequal',()=>{
+  const r=tableDifferences([{x:0,y:0},{x:0.5,y:0.25},{x:2,y:4}],1);
+  close(r.methods.forward.value,(4-0.25)/(2-0.5));
+  close(r.methods.backward.value,(0.25-0)/(0.5-0));
+  close(r.methods.central.value,(4-0)/(2-0));
+  close(r.methods.central.span,2);close(r.methods.central.h,1);
+  close(r.hNext,1.5);close(r.hPrev,0.5);
 });

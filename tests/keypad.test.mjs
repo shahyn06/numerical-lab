@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {editExpression} from '../docs/keypad.js';
+import {editExpression,keypadTargetLabel} from '../docs/keypad.js';
 import {parse,evaluate} from '../docs/engine.js';
 test('equation keypad constructs the requested exponential example with a grouped exponent',()=>{
   let r=editExpression('x^2-',4,4,{type:'exponential'});assert.equal(r.value,'x^2-e^()');assert.equal(r.start,7);
@@ -16,4 +16,12 @@ test('keypad wraps selections, inserts within a function, and supports deletion 
   assert.equal(editExpression('x',0,1,{type:'clear'}).value,'');
   assert.equal(editExpression('x+1',0,3,{type:'left'}).start,0);
   assert.deepEqual(editExpression('sin(x)',5,5,{type:'text',value:')'}),{value:'sin(x)',start:6,end:6});
+});
+test('keypad dialog labels each target field correctly',()=>{
+  assert.equal(keypadTargetLabel('function'),'Function f(x)');
+  assert.equal(keypadTargetLabel('g-function'),'Rearrangement g(x)');
+  assert.equal(keypadTargetLabel('derivative'),'Derivative f′(x)');
+  assert.equal(keypadTargetLabel('diff-function'),'Function f(x)');
+  assert.equal(keypadTargetLabel('diff-function','Function f(x)'),'Function f(x)');
+  assert.equal(keypadTargetLabel('anything-else','Custom label'),'Custom label');
 });

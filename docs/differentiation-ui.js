@@ -1,4 +1,4 @@
-import {differentiate,errorSeries,forwardDifference,backwardDifference,centralDifference,DIFFERENCE_METHODS} from './differentiation.js';
+import {differentiate,errorSeries,forwardDifference,backwardDifference,centralDifference,tableDifferences,validateTablePoints,DIFFERENCE_METHODS} from './differentiation.js';
 import {safeValue} from './engine.js';
 import {escapeHTML as esc,format as fmt,math,mn,expressionMath} from './ui-math.js';
 import {bindGraphDrag,dragHandle} from './graph-drag.js';
@@ -22,6 +22,8 @@ const INTUITION={
   compare:'Each method draws its own secant through a different pair of points, but all three aim at the same tangent slope. Comparing them at one h shows how much the choice of points matters.'
 };
 let method='forward',result=null,inputError=null,lessonIndex=0,taylorStep=0,quiz=null;
+let mode='function',tableResult=null,tableError=null,tableTargetX=null,tableSeeded=false;
+const TABLE_DEFAULT=[{x:'1',y:'1.002'},{x:'1.5',y:'1.0004'},{x:'2',y:'1.0005'},{x:'2.5',y:'1.00006'}];
 let showTangent=true,showSecant=true,showLabels=true;
 let graphGeometry=null,viewportLock=null,seriesCache={key:'',data:null};
 let animTimer=null,animStartH=null;
@@ -31,6 +33,7 @@ function message(s){$('#toast').textContent=s;$('#toast').hidden=false;clearTime
 function bestMethod(){if(!result)return null;let best=null;for(const m of DIFFERENCE_METHODS){const e=result.methods[m].absError;if(e!=null&&(best==null||e<result.methods[best].absError))best=m;}return best;}
 
 function compute(){
+  if(mode==='table'){computeTable();return;}
   inputError=null;
   try{result=differentiate({expression:$('#diff-function').value,a:$('#diff-a').value,h:$('#diff-h').value});}
   catch(e){result=null;inputError=e.message;}
@@ -38,7 +41,11 @@ function compute(){
   seriesCache={key:'',data:null};
   render();
 }
-function render(){renderSummary();renderFormula();renderExplanation();renderCompare();drawDifferentiation();}
+function render(){
+  if(mode==='table'){renderTableSummary();renderTableFormula();renderTableExplanation();renderTableCompare();}
+  else{renderSummary();renderFormula();renderExplanation();renderCompare();}
+  drawDifferentiation();
+}
 
 function renderSummary(){
   const el=$('#diff-summary');
@@ -116,9 +123,130 @@ function renderCompare(){
   $('#diff-table-footnote').textContent='Errors compare each secant slope with the exact derivative from automatic differentiation.';
 }
 
+/* ---- Table mode: differences of tabulated (x, F(x)) data ---- */
+function readTableRows(){return [...$('#diff-table-rows').children].map(row=>({x:row.querySelector('[data-coordinate="x"]').value,y:row.querySelector('[data-coordinate="y"]').value}));}
+function renderTableRows(rows){
+  $('#diff-table-rows').innerHTML=rows.map((p,i)=>`<div class="point-entry${tableTargetX!=null&&Number(p.x)===tableTargetX?' selected':''}" data-diff-row="${i}"><span>${i}</span><label class="sr-only" for="diff-point-x-${i}">x at point ${i}</label><input id="diff-point-x-${i}" type="number" step="any" data-coordinate="x" value="${esc(p.x)}"><label class="sr-only" for="diff-point-y-${i}">F(x) at point ${i}</label><input id="diff-point-y-${i}" type="number" step="any" data-coordinate="y" value="${esc(p.y)}"><button type="button" data-remove-diff-point="${i}" aria-label="Remove point ${i}" ${rows.length<=3?'disabled':''}>×</button></div>`).join('');
+  $('#diff-table-add').disabled=rows.length>=12;
+}
+function renderTableTargetOptions(){
+  const sel=$('#diff-table-target');
+  if(!tableResult){sel.innerHTML='';return;}
+  sel.innerHTML=tableResult.points.map(p=>`<option value="${esc(p.x)}" ${p.x===tableResult.a?'selected':''}>${esc(fmt(p.x,6))}</option>`).join('');
+}
+function computeTable({sortRows=false}={}){
+  tableError=null;
+  const rows=readTableRows();
+  try{
+    const sorted=validateTablePoints(rows);
+    let idx=tableTargetX==null?-1:sorted.findIndex(p=>p.x===tableTargetX);
+    if(idx<0)idx=Math.min(1,sorted.length-1);
+    tableResult=tableDifferences(rows,idx);
+    tableTargetX=tableResult.a;
+    if(sortRows)renderTableRows(tableResult.points.map(p=>({x:String(p.x),y:String(p.y)})));
+  }catch(e){tableResult=null;tableError=e.message;}
+  const box=$('#diff-table-error');box.hidden=!tableError;if(tableError)box.textContent=tableError;
+  [...$('#diff-table-rows').children].forEach(row=>{
+    const x=Number(row.querySelector('[data-coordinate="x"]').value);
+    row.classList.toggle('selected',tableResult!=null&&x===tableResult.a);
+  });
+  renderTableTargetOptions();
+  render();
+}
+function renderTableSummary(){
+  const el=$('#diff-summary');
+  if(!tableResult){el.innerHTML=`<div class="metric"><p class="metric-label">Approximate derivative</p><div class="metric-value">—</div><div class="metric-sub">Check the table above</div></div><div class="metric"><p class="metric-label">Exact derivative</p><div class="metric-value">—</div><div class="metric-sub">Unknown for tabulated data</div></div><div class="metric"><p class="metric-label">Absolute error</p><div class="metric-value">—</div><div class="metric-sub">Needs the exact derivative</div></div>`;return;}
+  const entry=method==='compare'?null:tableResult.methods[method];
+  el.innerHTML=`
+    <div class="metric"><p class="metric-label">Approximate derivative</p><div class="metric-value">${method==='compare'?'—':(entry&&entry.value!=null?esc(fmt(entry.value,10)):'—')}</div><div class="metric-sub">${method==='compare'?'See the comparison table below':(entry&&entry.error?'Not available at this point':`F′(${esc(fmt(tableResult.a,6))}) · ${esc(METHOD_NAMES[method])}`)}</div></div>
+    <div class="metric"><p class="metric-label">Exact derivative</p><div class="metric-value">—</div><div class="metric-sub">Unknown for tabulated data</div></div>
+    <div class="metric"><p class="metric-label">Absolute error</p><div class="metric-value">—</div><div class="metric-sub">Needs the exact derivative</div></div>`;
+}
+function tableFormulaMath(m){
+  const r=tableResult,F=v=>`<mrow><mi>F</mi><mo>(</mo>${mn(v)}<mo>)</mo></mrow>`,D=`<mrow><mi>F</mi><mo>′</mo><mo>(</mo>${mn(r.a)}<mo>)</mo></mrow>`;
+  const entry=r.methods[m];
+  if(entry.error){
+    const FA=`<mrow><mi>F</mi><mo>(</mo><mi>a</mi><mo>)</mo></mrow>`,FPH=`<mrow><mi>F</mi><mo>(</mo><mi>a</mi><mo>+</mo><mi>h</mi><mo>)</mo></mrow>`,FMH=`<mrow><mi>F</mi><mo>(</mo><mi>a</mi><mo>−</mo><mi>h</mi><mo>)</mo></mrow>`;
+    const generic={
+      forward:`<mfrac><mrow>${FPH}<mo>−</mo>${FA}</mrow><mrow><mi>h</mi></mrow></mfrac>`,
+      backward:`<mfrac><mrow>${FA}<mo>−</mo>${FMH}</mrow><mrow><mi>h</mi></mrow></mfrac>`,
+      central:`<mfrac><mrow>${FPH}<mo>−</mo>${FMH}</mrow><mrow><mn>2</mn><mi>h</mi></mrow></mfrac>`}[m];
+    return `${D}<mo>≈</mo>${generic}`;
+  }
+  const symbolic={
+    forward:`<mfrac><mrow>${F(r.next.x)}<mo>−</mo>${F(r.a)}</mrow><mrow>${mn(r.hNext)}</mrow></mfrac>`,
+    backward:`<mfrac><mrow>${F(r.a)}<mo>−</mo>${F(r.prev.x)}</mrow><mrow>${mn(r.hPrev)}</mrow></mfrac>`,
+    central:`<mfrac><mrow>${F(r.next.x)}<mo>−</mo>${F(r.prev.x)}</mrow><mrow>${mn(r.next.x-r.prev.x)}</mrow></mfrac>`}[m];
+  const values={
+    forward:`<mfrac><mrow>${mn(r.next.y)}<mo>−</mo>${mn(r.fa)}</mrow><mrow>${mn(r.hNext)}</mrow></mfrac>`,
+    backward:`<mfrac><mrow>${mn(r.fa)}<mo>−</mo>${mn(r.prev.y)}</mrow><mrow>${mn(r.hPrev)}</mrow></mfrac>`,
+    central:`<mfrac><mrow>${mn(r.next.y)}<mo>−</mo>${mn(r.prev.y)}</mrow><mrow>${mn(r.next.x-r.prev.x)}</mrow></mfrac>`}[m];
+  return `${D}<mo>≈</mo>${symbolic}<mo>=</mo>${values}<mo>=</mo>${mn(entry.value)}`;
+}
+function tableFormulaSteps(m){
+  const r=tableResult,e=r.methods[m];
+  if(e.error)return [e.error];
+  if(m==='forward')return [
+    `Start at a = ${fmt(r.a)} and use the next table point x = ${fmt(r.next.x)}.`,
+    `Read F(${fmt(r.a,6)}) = ${fmt(r.fa)} and F(${fmt(r.next.x,6)}) = ${fmt(r.next.y)} from the table.`,
+    `Divide the change in F by the spacing ${fmt(r.hNext)}: the quotient is ${fmt(e.value)}.`];
+  if(m==='backward')return [
+    `Start at a = ${fmt(r.a)} and use the previous table point x = ${fmt(r.prev.x)}.`,
+    `Read F(${fmt(r.prev.x,6)}) = ${fmt(r.prev.y)} and F(${fmt(r.a,6)}) = ${fmt(r.fa)} from the table.`,
+    `Divide the change in F by the spacing ${fmt(r.hPrev)}: the quotient is ${fmt(e.value)}.`];
+  return [
+    `Use the two table points around a: ${fmt(r.prev.x)} and ${fmt(r.next.x)}. The value at a itself is not used.`,
+    `Read F(${fmt(r.prev.x,6)}) = ${fmt(r.prev.y)} and F(${fmt(r.next.x,6)}) = ${fmt(r.next.y)} from the table.`,
+    `Divide the change in F by the total distance ${fmt(r.next.x-r.prev.x)}: the quotient is ${fmt(e.value)}.`];
+}
+function renderTableFormula(){
+  const title=$('#diff-formula-title'),box=$('#diff-formula'),steps=$('#diff-steps'),values=$('#diff-values');
+  title.textContent=method==='compare'?'Compare All':METHOD_NAMES[method];
+  if(!tableResult){box.innerHTML='';steps.innerHTML='';values.innerHTML='';return;}
+  box.innerHTML=method==='compare'
+    ?DIFFERENCE_METHODS.map(m=>`<p class="diff-formula-name">${esc(METHOD_NAMES[m])}</p>${math(tableFormulaMath(m))}`).join('')
+    :math(tableFormulaMath(method));
+  const chips=[];
+  if(tableResult.prev)chips.push([tableResult.prev,'R']);
+  chips.push([{x:tableResult.a,y:tableResult.fa},'P']);
+  if(tableResult.next)chips.push([tableResult.next,'Q']);
+  values.innerHTML=chips.map(([p])=>`<span>F(${esc(fmt(p.x,6))}) = <b>${esc(fmt(p.y))}</b></span>`).join('');
+  steps.innerHTML=(method==='compare'
+    ?DIFFERENCE_METHODS.flatMap(m=>[`<li><strong>${esc(METHOD_SHORT[m])}</strong> · ${esc(tableFormulaSteps(m).at(-1))}</li>`])
+    :tableFormulaSteps(method).map(s=>`<li>${esc(s)}</li>`)).join('');
+}
+function renderTableExplanation(){
+  const el=$('#diff-explanation');
+  if(!tableResult){el.innerHTML=`<div class="explanation-icon bad">!</div><div><h3>Check setup</h3><p>${esc(tableError||'Enter at least three table points with distinct x values.')}</p></div>`;return;}
+  const entry=method==='compare'?null:tableResult.methods[method];
+  const parts=[`<p>${esc(INTUITION[method])}</p>`,`<p>The exact derivative is unknown because the table does not reveal the underlying function, so no error can be computed.</p>`];
+  if(entry&&entry.error)parts.push(`<p>${esc(entry.error)}</p>`);
+  if(method==='compare'){
+    const avail=DIFFERENCE_METHODS.filter(m=>!tableResult.methods[m].error).map(m=>METHOD_SHORT[m]);
+    parts.push(`<p>${avail.length?`Available at this point: ${avail.join(' · ')}.`:'No method is available at this point.'}</p>`);
+  }
+  el.innerHTML=`<div class="explanation-icon warn">!</div><div><h3>${method==='compare'?'Comparing the three methods':esc(METHOD_NAMES[method])}</h3>${parts.join('')}</div>`;
+}
+function renderTableCompare(){
+  const body=$('#diff-table tbody');
+  if(!tableResult){body.innerHTML=`<tr><td class="empty-cell" colspan="4">No results yet. Check the setup, then read the comparison here.</td></tr>`;$('#diff-table-footnote').textContent='';return;}
+  body.innerHTML=DIFFERENCE_METHODS.map(m=>{const e=tableResult.methods[m];return `<tr class="${method===m?'selected':''}"><td>${esc(METHOD_NAMES[m])}</td><td class="root-cell">${e.value!=null?esc(fmt(e.value)):'—'}</td><td>—</td><td>—</td></tr>`;}).join('');
+  $('#diff-table-footnote').textContent='With tabulated data the underlying function is unknown, so there is no exact derivative to compare errors against.';
+}
+function setMode(next){
+  if(mode===next)return;
+  mode=next;stopAnimation();
+  document.querySelectorAll('[data-diff-mode]').forEach(el=>el.setAttribute('aria-selected',String(el.dataset.diffMode===mode)));
+  $('#diff-function-mode').hidden=mode!=='function';
+  $('#diff-table-mode').hidden=mode!=='table';
+  if(mode==='table'&&!tableSeeded){tableSeeded=true;tableTargetX=1.5;renderTableRows(TABLE_DEFAULT);computeTable();}
+  else compute();
+}
+
 export function drawDifferentiation(){drawGraph();drawBars();drawErrorChart();}
 function drawGraph(){
   const svg=$('#diff-chart');
+  if(mode==='table'){drawTableGraph();return;}
   if(!result||$('#differentiation-lab').hidden)return;
   const r=result,W=Math.max(300,svg.getBoundingClientRect().width),H=W<430?260:300,L=55,R=22,T=20,B=40,iw=W-L-R,ih=H-T-B;
   svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
@@ -156,11 +284,12 @@ function drawGraph(){
     if(m==='central')plot+=secant(r.a-r.h,r.fMinus,r.a+r.h,r.fPlus,METHOD_COLORS.central);
   }
   const point=(x,y,color,title)=>y==null?'':`<circle cx="${X(x)}" cy="${Y(y)}" r="4.5" fill="${color}" stroke="var(--graph-dot-border)" stroke-width="2"><title>${esc(title)}: (${fmt(x)}, ${fmt(y)})</title></circle>`;
-  plot+=point(r.a-r.h,r.fMinus,'var(--lime)','Backward point R');
-  plot+=point(r.a+r.h,r.fPlus,'var(--blue)','Forward point Q');
+  const showR=method!=='forward',showQ=method!=='backward';
+  if(showR)plot+=point(r.a-r.h,r.fMinus,'var(--lime)','Backward point R');
+  if(showQ)plot+=point(r.a+r.h,r.fPlus,'var(--blue)','Forward point Q');
   if(showLabels){
     const label=(x,y,s)=>y==null?'':text(X(x),Y(y)-11,s,'middle','point-label');
-    plot+=label(r.a-r.h,r.fMinus,'R')+label(r.a,r.fa,'P')+label(r.a+r.h,r.fPlus,'Q');
+    plot+=(showR?label(r.a-r.h,r.fMinus,'R'):'')+label(r.a,r.fa,'P')+(showQ?label(r.a+r.h,r.fPlus,'Q'):'');
     const by=H-B-16,bracket=(x1,x2,s,yOff=0)=>line(X(x1),by+yOff,X(x2),by+yOff,'var(--graph-axis)')+line(X(x1),by+yOff-4,X(x1),by+yOff+4,'var(--graph-axis)')+line(X(x2),by+yOff-4,X(x2),by+yOff+4,'var(--graph-axis)')+text((X(x1)+X(x2))/2,by+yOff-5,s);
     if(method==='forward')plot+=bracket(r.a,r.a+r.h,'h');
     if(method==='backward')plot+=bracket(r.a-r.h,r.a,'h');
@@ -189,8 +318,77 @@ function drawGraph(){
   $('#diff-probe-value').textContent=r.fa==null?`a = ${fmt(r.a,7)} · f(a) is undefined here`:`a = ${fmt(r.a,7)} · f(a) = ${fmt(r.fa,7)} · f′(a) ≈ ${approx!=null?fmt(approx,7):'—'}`;
 }
 
+function drawTableGraph(){
+  const svg=$('#diff-chart');
+  if($('#differentiation-lab').hidden)return;
+  const W=Math.max(300,svg.getBoundingClientRect().width),H=W<430?260:300,L=55,R=22,T=20,B=40,iw=W-L-R,ih=H-T-B;
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+  const line=(x1,y1,x2,y2,color='var(--graph-grid)',dash='',width=1)=>`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" stroke-width="${width}" ${dash?`stroke-dasharray="${dash}"`:''}/>`;
+  const text=(x,y,s,anchor='middle',cl='')=>`<text x="${x}" y="${y}" text-anchor="${anchor}" class="${cl}">${esc(s)}</text>`;
+  if(!tableResult){svg.innerHTML='';$('#diff-legend').innerHTML='';$('#diff-chart-caption').textContent=tableError||'';svg.setAttribute('aria-label',tableError||'');$('#diff-probe-value').textContent='';return;}
+  const r=tableResult,pts=r.points;
+  let xmin=Math.min(...pts.map(p=>p.x)),xmax=Math.max(...pts.map(p=>p.x));
+  let ymin=Math.min(0,...pts.map(p=>p.y)),ymax=Math.max(0,...pts.map(p=>p.y));
+  const padX=(xmax-xmin||1)*.18;xmin-=padX;xmax+=padX;
+  if(ymin===ymax){ymin-=1;ymax+=1;}
+  const padY=(ymax-ymin)*.15;ymin-=padY;ymax+=padY;
+  graphGeometry={left:L,right:W-R,top:T,bottom:H-B,xmin,xmax,ymin,ymax};
+  const X=x=>L+(x-xmin)/(xmax-xmin)*iw,Y=y=>T+(ymax-y)/(ymax-ymin)*ih;
+  let content=`<defs><clipPath id="diff-clip"><rect x="${L}" y="${T}" width="${iw}" height="${ih}"/></clipPath></defs>`;
+  for(let i=0;i<=4;i++){const x=xmin+(xmax-xmin)*i/4,y=ymin+(ymax-ymin)*i/4;content+=line(X(x),T,X(x),H-B)+text(X(x),H-B+20,fmt(x,4));content+=line(L,Y(y),W-R,Y(y))+text(L-9,Y(y)+3,fmt(y,4),'end');}
+  content+=text(W-R,H-3,'x','end','axis-label')+text(L,T-7,'F(x)','start','axis-label');
+  let plot='';
+  if(xmin<=0&&xmax>=0)plot+=line(X(0),T,X(0),H-B,'var(--graph-axis)');
+  if(ymin<=0&&ymax>=0)plot+=line(L,Y(0),W-R,Y(0),'var(--graph-axis)');
+  plot+=`<path d="${pts.map((p,i)=>(i?'L':'M')+X(p.x).toFixed(2)+' '+Y(p.y).toFixed(2)).join('')}" fill="none" stroke="var(--graph-muted)" stroke-width="1.2" stroke-dasharray="3 4" opacity=".55"/>`;
+  const secant=(p1,p2,color)=>{const dx=p2.x-p1.x,dy=p2.y-p1.y;return line(X(p1.x-dx*.45),Y(p1.y-dy*.45),X(p2.x+dx*.45),Y(p2.y+dy*.45),color,'',1.8);};
+  const activeMethods=method==='compare'?DIFFERENCE_METHODS:[method];
+  if(showSecant)for(const m of activeMethods){
+    if(m==='forward'&&r.next)plot+=secant({x:r.a,y:r.fa},r.next,METHOD_COLORS.forward);
+    if(m==='backward'&&r.prev)plot+=secant(r.prev,{x:r.a,y:r.fa},METHOD_COLORS.backward);
+    if(m==='central'&&r.prev&&r.next)plot+=secant(r.prev,r.next,METHOD_COLORS.central);
+  }
+  const showR=method!=='forward',showQ=method!=='backward';
+  const dot=p=>`<circle cx="${X(p.x)}" cy="${Y(p.y)}" r="3.2" fill="var(--graph-muted)" stroke="var(--graph-dot-border)" stroke-width="1.4"><title>(${fmt(p.x)}, ${fmt(p.y)})</title></circle>`;
+  for(const p of pts){if(p===r.prev||p===r.next||p.x===r.a)continue;plot+=dot(p);}
+  const point=(p,color,title)=>`<circle cx="${X(p.x)}" cy="${Y(p.y)}" r="4.5" fill="${color}" stroke="var(--graph-dot-border)" stroke-width="2"><title>${esc(title)}: (${fmt(p.x)}, ${fmt(p.y)})</title></circle>`;
+  if(showR&&r.prev)plot+=point(r.prev,'var(--lime)','Backward point R');
+  if(showQ&&r.next)plot+=point(r.next,'var(--blue)','Forward point Q');
+  if(showLabels){
+    const label=(p,s)=>text(X(p.x),Y(p.y)-11,s,'middle','point-label');
+    if(showR&&r.prev)plot+=label(r.prev,'R');
+    plot+=label({x:r.a,y:r.fa},'P');
+    if(showQ&&r.next)plot+=label(r.next,'Q');
+    const by=H-B-16,bracket=(x1,x2,s,yOff=0)=>line(X(x1),by+yOff,X(x2),by+yOff,'var(--graph-axis)')+line(X(x1),by+yOff-4,X(x1),by+yOff+4,'var(--graph-axis)')+line(X(x2),by+yOff-4,X(x2),by+yOff+4,'var(--graph-axis)')+text((X(x1)+X(x2))/2,by+yOff-5,s);
+    if(method!=='forward'&&r.prev)plot+=bracket(r.prev.x,r.a,fmt(r.hPrev,4));
+    if(method!=='backward'&&r.next)plot+=bracket(r.a,r.next.x,fmt(r.hNext,4));
+    if(method==='central'&&r.prev&&r.next)plot+=bracket(r.prev.x,r.next.x,fmt(r.next.x-r.prev.x,4),15);
+  }
+  plot+=point({x:r.a,y:r.fa},'var(--graph-orange)','Target point P');
+  content+=`<g clip-path="url(#diff-clip)">${plot}</g>`;
+  svg.innerHTML=content;
+  const legend=[`<span><i class="legend-dot" style="background:var(--graph-muted)"></i> Data points</span>`,`<span><i class="legend-dot" style="background:var(--graph-orange)"></i> Target point P</span>`];
+  if(showSecant)for(const m of activeMethods){if(tableResult.methods[m].error)continue;legend.push(`<span><i class="legend-line" style="background:${METHOD_COLORS[m]}"></i> ${esc(METHOD_NAMES[m])} secant</span>`);}
+  $('#diff-legend').innerHTML=legend.join('');
+  const entry=method==='compare'?null:tableResult.methods[method];
+  let caption;
+  if(method==='compare')caption='Three secants from the table points. No tangent is available without the underlying function.';
+  else if(entry&&entry.error)caption=entry.error;
+  else caption=`The secant through ${method==='forward'?'P and Q':method==='backward'?'R and P':'R and Q'} has slope ${fmt(entry.value)}.`;
+  $('#diff-chart-caption').textContent=caption;
+  svg.setAttribute('aria-label',caption);
+  const approx=method==='compare'||!entry||entry.value==null?null:entry.value;
+  $('#diff-probe-value').textContent=`a = ${fmt(r.a,7)} · F(a) = ${fmt(r.fa,7)} · F′(a) ≈ ${approx!=null?fmt(approx,7):'—'}`;
+}
+
 function drawBars(){
   const svg=$('#diff-bars');
+  if(mode==='table'){
+    if($('#differentiation-lab').hidden)return;
+    svg.setAttribute('viewBox','0 0 900 190');
+    svg.innerHTML=`<text x="15" y="40">${esc(tableResult?'No exact derivative, so errors cannot be compared.':'No errors to compare yet.')}</text>`;
+    return;
+  }
   if(!result||$('#differentiation-lab').hidden)return;
   const W=Math.max(300,svg.getBoundingClientRect().width),H=190,L=30,R=16,T=26,B=34,iw=W-L-R,ih=H-T-B;
   svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
@@ -211,6 +409,13 @@ function drawBars(){
 
 function drawErrorChart(){
   const svg=$('#diff-error-chart');
+  if(mode==='table'){
+    if($('#differentiation-lab').hidden)return;
+    svg.setAttribute('viewBox','0 0 900 240');
+    svg.innerHTML=`<text x="15" y="40">${esc('The exact derivative is unavailable, so errors cannot be measured.')}</text>`;
+    $('#diff-error-legend').innerHTML='';
+    return;
+  }
   if(!result||$('#differentiation-lab').hidden)return;
   const key=result.expression+'|'+result.a;
   if(seriesCache.key!==key)seriesCache={key,data:errorSeries({expression:result.expression,a:result.a})};
@@ -429,6 +634,17 @@ function toggleAnimation(){
   },70);
 }
 export function initDifferentiation(){
+  document.querySelectorAll('[data-diff-mode]').forEach(b=>b.addEventListener('click',()=>setMode(b.dataset.diffMode)));
+  $('#diff-table-rows').addEventListener('input',()=>computeTable());
+  $('#diff-table-rows').addEventListener('change',()=>computeTable({sortRows:true}));
+  $('#diff-table-rows').addEventListener('click',e=>{
+    const rm=e.target.closest('[data-remove-diff-point]');
+    if(rm){const rows=readTableRows();if(rows.length<=3)return;rows.splice(Number(rm.dataset.removeDiffPoint),1);renderTableRows(rows);computeTable();return;}
+    const row=e.target.closest('[data-diff-row]');
+    if(row){const x=Number(row.querySelector('[data-coordinate="x"]').value);if(Number.isFinite(x)&&x!==tableTargetX){tableTargetX=x;computeTable();}}
+  });
+  $('#diff-table-add').addEventListener('click',()=>{const rows=readTableRows();if(rows.length>=12)return;rows.push({x:'',y:''});renderTableRows(rows);computeTable();});
+  $('#diff-table-target').addEventListener('change',e=>{tableTargetX=Number(e.target.value);computeTable();});
   document.querySelectorAll('[data-diff-method]').forEach(b=>b.addEventListener('click',()=>setMethod(b.dataset.diffMethod)));
   $('.diff-method-tabs').addEventListener('keydown',e=>{
     if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;
@@ -477,6 +693,7 @@ export function initDifferentiation(){
   });
   $('#diff-guide-open').addEventListener('click',openDifferentiationGuide);
   function moveTarget(x){
+    if(mode==='table')return;
     $('#diff-a').value=Number(x.toPrecision(10));
     compute();
   }

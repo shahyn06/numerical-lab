@@ -75,15 +75,27 @@
     <div class="diff-method-tabs" role="tablist" aria-label="Differentiation method"><button role="tab" aria-selected="true" data-diff-method="forward"><span>01</span><div>Forward Difference<small>Use a and a + h</small></div><b>→</b></button><button role="tab" aria-selected="false" data-diff-method="backward"><span>02</span><div>Backward Difference<small>Use a − h and a</small></div><b>←</b></button><button role="tab" aria-selected="false" data-diff-method="central"><span>03</span><div>Central Difference<small>Use a − h and a + h</small></div><b>↔</b></button><button role="tab" aria-selected="false" data-diff-method="compare"><span>04</span><div>Compare All<small>All three at once</small></div><b>≡</b></button></div>
     <div class="workspace differentiation-workspace">
       <aside class="input-panel panel"><div class="section-heading"><h2>Set up your experiment</h2><span class="tiny-tag">INPUTS</span></div>
+        <div class="diff-mode-switch" role="tablist" aria-label="Input mode"><button role="tab" aria-selected="true" data-diff-mode="function">Function</button><button role="tab" aria-selected="false" data-diff-mode="table">Table</button></div>
+        <div id="diff-function-mode">
         <label class="field-label" for="diff-preset">Start with an example</label><div class="select-wrap"><select id="diff-preset"><option value="lecture">Lecture example · ln(x) at 1.8</option><option value="quadratic">Parabola · x^2</option><option value="cubic">Cubic · x^3</option><option value="sine">Sine · sin(x)</option><option value="cosine">Cosine · cos(x)</option><option value="exponential">Exponential · exp(x)</option><option value="root">Square root · sqrt(x)</option><option value="custom">Custom function</option></select></div>
         <form id="diff-form" novalidate>
-          <div class="input-group"><label for="diff-function">Function <span class="math-label">f(x)</span></label><input id="diff-function" class="expression" value="ln(x)" autocomplete="off" spellcheck="false"><p class="field-hint">Approximate the derivative of f at one point.</p></div>
+          <div class="input-group"><label for="diff-function">Function <span class="math-label">f(x)</span></label><input id="diff-function" class="expression" value="ln(x)" autocomplete="off" spellcheck="false"><div class="expression-tools"><p class="field-hint">Approximate the derivative of f at one point.</p><button type="button" data-keypad-target="diff-function" data-keypad-label="Function f(x)">⌨ Equation builder</button></div></div>
           <div class="input-group"><label for="diff-a">Target point <span class="math-label">a</span></label><input id="diff-a" type="number" step="any" value="1.8"><p class="field-hint">The point where the derivative is required.</p></div>
           <div class="input-group"><label for="diff-h">Step size <span class="math-label">h</span></label><input id="diff-h" type="number" step="any" value="0.1" min="0.001" max="2"><input id="diff-h-slider" type="range" min="0" max="1000" value="500" aria-label="Step size h slider"><div class="diff-h-presets"><button type="button" data-diff-h="1">h = 1</button><button type="button" data-diff-h="0.5">h = 0.5</button><button type="button" data-diff-h="0.1">h = 0.1</button><button type="button" data-diff-h="0.05">h = 0.05</button><button type="button" data-diff-h="0.01">h = 0.01</button><button type="button" data-diff-h="0.001">h = 0.001</button></div><p class="field-hint">Smaller h usually means a smaller truncation error.</p></div>
           <div class="diff-anim-row"><button type="button" class="primary-button" id="diff-animate">Decrease h</button><button type="button" class="text-button" id="diff-anim-reset">Reset h</button></div>
           <div id="diff-error" class="input-error" role="alert" hidden></div>
         </form>
         <details class="syntax-help"><summary>How to enter a function <span>+</span></summary><p>Use <code>x</code>, <code>+ − * / ^</code>, and parentheses. Write <code>x^2</code> for x². Implicit multiplication such as <code>2x</code> is supported.</p><p><code>sin</code>, <code>cos</code>, <code>tan</code>, <code>exp</code>, <code>ln</code>, <code>log</code>, <code>sqrt</code>, <code>cbrt</code>, <code>abs</code>; constants <code>pi</code>, <code>e</code>. Trig uses radians; log and ln are natural logarithms.</p></details>
+        </div>
+        <div id="diff-table-mode" hidden>
+          <p class="field-hint">Enter the values from your table. Rows are sorted by x automatically.</p>
+          <div class="points-heading"><span>Data points</span><span>3–12 points · distinct x</span></div>
+          <div class="point-grid-head"><span>i</span><span>x</span><span>F(x)</span><span></span></div>
+          <div id="diff-table-rows"></div>
+          <button type="button" class="add-point" id="diff-table-add">+ Add a row</button>
+          <div class="input-group"><label for="diff-table-target">Target point <span class="math-label">a</span></label><div class="select-wrap"><select id="diff-table-target"></select></div><p class="field-hint">Choose one of the table x values, or select a row.</p></div>
+          <div id="diff-table-error" class="input-error" role="alert" hidden></div>
+        </div>
         <div class="method-note"><span class="note-mark">✦</span><div><strong id="diff-tip-title">Look ahead one step.</strong><p id="diff-tip">Forward Difference reads the slope from a to the next point on the right. It is simple, but it cannot see the curve bending behind a.</p><button type="button" id="diff-guide-open">Understand differentiation →</button></div></div>
       </aside>
       <section class="results" aria-label="Differentiation results"><div id="diff-summary" class="result-summary" aria-live="polite"></div>

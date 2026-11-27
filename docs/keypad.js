@@ -18,6 +18,15 @@ export function editExpression(value,start,end,action){
   const text=value.slice(0,start)+insert+value.slice(end),p=start+offset;return {value:text,start:p,end:p};
 }
 
+// Dialog heading for a target field. A button may declare its own label with
+// data-keypad-label; otherwise the label comes from the field id. The
+// differentiation field is a plain f(x), so it is listed explicitly — without
+// an entry it would fall through to the derivative label.
+export function keypadTargetLabel(id,explicit){
+  if(explicit)return explicit;
+  return id==='function'||id==='diff-function'?'Function f(x)':id==='g-function'?'Rearrangement g(x)':'Derivative f′(x)';
+}
+
 export function initKeypad(){
   const $=s=>document.querySelector(s),dialog=$('#keypad-dialog'),input=$('#keypad-input');let target=null;
   const keys=[
@@ -32,7 +41,7 @@ export function initKeypad(){
   $('#math-keypad').innerHTML=keys.map(([label,type,value],i)=>`<button type="button" data-math-key="${i}" class="${type==='text'&&/^[0-9.]$/.test(value)?'number-key':type==='clear'?'clear-key':''}" aria-label="${({backspace:'Backspace',power:'Insert power',square:'Square',exponential:'e to a power',fraction:'Insert fraction',clear:'Clear expression'})[type]||label}">${label}</button>`).join('');
   function preview(){try{const ast=parse(input.value);$('#keypad-preview').innerHTML=math(expressionMath(ast));$('#keypad-feedback').textContent='Ready. Powers use parentheses: e^(2*x) means e to the power 2x.';$('#keypad-feedback').classList.remove('invalid');$('#keypad-use').disabled=false;}catch(e){$('#keypad-preview').textContent=input.value?'Keep building your expression…':'Your equation will appear here.';$('#keypad-feedback').textContent=input.value?e.message:'Start with x, a number, or a function key.';$('#keypad-feedback').classList.add('invalid');$('#keypad-use').disabled=true;}}
   function apply(action){const r=editExpression(input.value,input.selectionStart,input.selectionEnd,action);input.value=r.value;input.focus();input.setSelectionRange(r.start,r.end);preview();}
-  document.querySelectorAll('[data-keypad-target]').forEach(b=>b.addEventListener('click',()=>{target=document.getElementById(b.dataset.keypadTarget);input.value=target.value;$('#keypad-target-label').textContent=target.id==='function'?'Function f(x)':target.id==='g-function'?'Rearrangement g(x)':'Derivative f′(x)';dialog.showModal();input.focus();input.setSelectionRange(input.value.length,input.value.length);preview();}));
+  document.querySelectorAll('[data-keypad-target]').forEach(b=>b.addEventListener('click',()=>{target=document.getElementById(b.dataset.keypadTarget);input.value=target.value;$('#keypad-target-label').textContent=keypadTargetLabel(target.id,b.dataset.keypadLabel);dialog.showModal();input.focus();input.setSelectionRange(input.value.length,input.value.length);preview();}));
   $('#math-keypad').addEventListener('pointerdown',e=>{if(e.target.closest('button'))e.preventDefault();});
   $('#math-keypad').addEventListener('click',e=>{const b=e.target.closest('[data-math-key]');if(!b)return;const [,type,value]=keys[Number(b.dataset.mathKey)];apply({type,value});});
   dialog.querySelectorAll('[data-edit]').forEach(b=>{b.addEventListener('pointerdown',e=>e.preventDefault());b.addEventListener('click',()=>apply({type:b.dataset.edit}));});

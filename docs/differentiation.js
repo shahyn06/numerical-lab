@@ -58,6 +58,44 @@ export function differentiate(input){
     exact,exactError,methods};
 }
 
+/* Tabulated data: no formula, only (x, F(x)) rows. Rows are validated and
+   sorted by x, and each quotient uses the actual neighbour spacing, so
+   unequal spacing works. A method whose neighbour does not exist reports an
+   error string instead of a number — never NaN or Infinity. There is no
+   exact derivative, because the underlying function is unknown. */
+export function validateTablePoints(input){
+  if(!Array.isArray(input)||input.length<2)throw new MathError('Enter at least 2 data points.');
+  const points=input.map((p,i)=>{
+    const x=Number(p?.x),y=Number(p?.y);
+    if(p?.x==null||String(p.x).trim()===''||!finite(x))throw new MathError(`x at point ${i+1} must be a finite number. Every point needs both x and F(x).`);
+    if(p?.y==null||String(p.y).trim()===''||!finite(y))throw new MathError(`F(x) at point ${i+1} must be a finite number. Every point needs both x and F(x).`);
+    return {x,y};
+  });
+  points.sort((p,q)=>p.x-q.x);
+  for(let i=1;i<points.length;i++)
+    if(points[i].x===points[i-1].x)throw new MathError('Each x value must be different. Duplicate x values leave no spacing for a difference quotient.');
+  return points;
+}
+
+export function tableDifferences(input,index){
+  const points=validateTablePoints(input);
+  if(!Number.isInteger(index)||index<0||index>=points.length)throw new MathError('Target point a must be one of the table points.');
+  const at=points[index],prev=points[index-1]??null,next=points[index+1]??null;
+  const entry=(value,extra)=>finite(value)?{value,...extra}:{error:'The difference quotient is not finite for these table values.'};
+  const methods={
+    forward:next?entry((next.y-at.y)/(next.x-at.x),{h:next.x-at.x})
+      :{error:'Forward Difference is not available at the last point of the table.'},
+    backward:prev?entry((at.y-prev.y)/(at.x-prev.x),{h:at.x-prev.x})
+      :{error:'Backward Difference is not available at the first point of the table.'},
+    central:prev&&next?entry((next.y-prev.y)/(next.x-prev.x),{h:(next.x-prev.x)/2,span:next.x-prev.x})
+      :{error:'Central Difference is not available at the ends of the table: it needs a point on each side.'}
+  };
+  return {points,index,a:at.x,fa:at.y,prev,next,
+    hPrev:prev?at.x-prev.x:null,hNext:next?next.x-at.x:null,
+    exact:null,exactError:'The exact derivative is unknown because the underlying function is not given.',
+    methods};
+}
+
 /* Absolute error of each method over log-spaced step sizes from 2 down to
    1e-8. Small h eventually shows floating-point round-off growing again,
    which is exactly what the error chart is meant to reveal. */
